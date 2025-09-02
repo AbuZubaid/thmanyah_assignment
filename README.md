@@ -44,25 +44,35 @@ docker-compose up --build -d zookeeper kafka postgresql kafka-connect redis clic
 4- انتظر دقيقة، ثم شغل الأمر التالي:
 
 
+
 ( curl -X POST -H "Content-Type: application/json" \
 --data @connectors/postgres-connector.json \
 http://localhost:8084/connectors )
 
 
+
 4- قم بتوليد البيانات من خلال سكريبت بايثون data_generator.py
+
+
 
 
 5- تأكد أن كلاً من mydb.public.content و mydb.public.engagement_events موجودين في القائمة عند تشغيل الأمر التالي:
 
 
+
+
 docker exec -it kafka kafka-topics \
 --bootstrap-server kafka:29092 --list
+
+
 
 6- قم بتشغيل الأمر التالي لإضافة باقي الـ services : 
 
 
 
 docker-compose up -d --no-deps enrichment-app redis-sink jsonl-sink ch-sink
+
+
 
 
 7- تأكد من الـ Consuming وأن كافكا يرى البيانات، من خلال تشغيل الأمرين التاليين: 
@@ -78,11 +88,16 @@ docker-compose up -d --no-deps enrichment-app redis-sink jsonl-sink ch-sink
 
 
 
+
+
 ( docker exec -it kafka kafka-console-consumer \
 --bootstrap-server kafka:29092 \
 --topic mydb.public.engagement_events \
 --from-beginning --max-messages 3 \
 --property print.key=true --property key.separator=" | " )
+
+
+
 
 
 
@@ -96,10 +111,14 @@ docker-compose up -d --no-deps enrichment-app redis-sink jsonl-sink ch-sink
 
     
 
+
+
 ( docker exec -it kafka kafka-console-consumer \
     --bootstrap-server kafka:29092 \
     --topic enriched.jsonl \
     --from-beginning --property print.key=true --property key.separator=" | " )
+
+
     
 
 ( docker exec -it kafka kafka-console-consumer \
@@ -108,7 +127,10 @@ docker-compose up -d --no-deps enrichment-app redis-sink jsonl-sink ch-sink
     --from-beginning --property print.key=true --property key.separator=" | " )
     
 
+
+
 او مثلا
+
 
 
  docker exec -it redis redis-cli
@@ -120,6 +142,7 @@ GET 1
 
 
 بامكانك فتح ملف json-data/enriched.json لترى البيانات التي تم تخزينها محليا. 
+___________________________________________________________________________________
 
 
 كل المودة،
