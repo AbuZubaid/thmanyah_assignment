@@ -8,10 +8,8 @@ bootstrap_servers = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:29092").split(",
 redis_host = os.getenv("REDIS_HOST", "redis")
 redis_port = int(os.getenv("REDIS_PORT", "6379"))
 
-# تهيئة Redis
 r = redis.Redis(host=redis_host, port=redis_port, decode_responses=True)
 
-# تهيئة Kafka Consumer
 consumer = KafkaConsumer(
     "enriched.redis",
     bootstrap_servers=bootstrap_servers,
@@ -27,10 +25,8 @@ print("🚀 Redis sink started... waiting for messages")
 for message in consumer:
     event = message.value
 
-    # نبني الـ key: مثلاً event:<content>:<event_type>
     key = f"event:{message.offset}"
 
-    # نخزن JSON بالكامل
     r.setex(key, 600, json.dumps(event)) # TTL = 600 ثانية (10 دقائق)
 
     print(f"✅ Stored in Redis: {key} -> {event}")
