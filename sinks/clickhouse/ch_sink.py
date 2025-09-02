@@ -13,8 +13,6 @@ CH_TBL  = os.getenv('CH_TABLE', 'enriched_events')
 CH_USER = os.getenv('CH_USER', 'app')
 CH_PASSWORD = os.getenv('CH_PASSWORD', 'app123')
 
-# --- CORRECTED LINE ---
-# Pass the username and password to the client
 client = clickhouse_connect.get_client(host=CH_HOST, port=CH_PORT, user=CH_USER, password=CH_PASSWORD)
 
 client.command(f'CREATE DATABASE IF NOT EXISTS {CH_DB}')
