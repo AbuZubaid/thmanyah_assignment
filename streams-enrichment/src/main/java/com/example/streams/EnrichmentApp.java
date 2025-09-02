@@ -38,11 +38,10 @@ public class EnrichmentApp {
         props.put(StreamsConfig.DEFAULT_KEY_SERDE_CLASS_CONFIG, Serdes.String().getClass());
         props.put(StreamsConfig.DEFAULT_VALUE_SERDE_CLASS_CONFIG, Serdes.String().getClass());
 
-        // Optional: faster commits in dev
         props.put(StreamsConfig.COMMIT_INTERVAL_MS_CONFIG, 1000);
         props.put(StreamsConfig.NUM_STREAM_THREADS_CONFIG, 1);
 
-        // === Topic names (override via env when needed) ===
+        // === Topic names ===
         final String CONTENT_TOPIC  = System.getenv().getOrDefault("CONTENT_TOPIC", "mydb.public.content");
         final String EVENTS_TOPIC   = System.getenv().getOrDefault("EVENTS_TOPIC", "mydb.public.engagement_events");
         final String OUT_CLICKHOUSE = System.getenv().getOrDefault("ENRICHED_CLICKHOUSE_TOPIC", "enriched.clickhouse");
@@ -59,7 +58,6 @@ public class EnrichmentApp {
         GlobalKTable<String, String> contentTable = builder.globalTable(
                 CONTENT_TOPIC, Consumed.with(Serdes.String(), Serdes.String()));
 
-        // Events stream (flat JSON), parse once and require content_id
         KStream<String, JsonNode> events = builder.stream(EVENTS_TOPIC, Consumed.with(Serdes.String(), Serdes.String()))
             .mapValues(v -> {
                 try { return mapper.readTree(v); }
