@@ -5,16 +5,14 @@ import json
 from faker import Faker
 from datetime import datetime, timedelta
 
-# إعداد Faker لتوليد بيانات وهمية
 fake = Faker()
 
-# إعداد الاتصال مع PostgreSQL (تأكد من البورت في docker-compose)
 conn = psycopg2.connect(
     dbname="mydb",
     user="user",
     password="password",
-    host="localhost",   # لو بتشغّل من جهازك
-    port="5432"         # غيّرها لو عامل mapping مختلف
+    host="localhost",   
+    port="5432"         
 )
 
 cur = conn.cursor()
