@@ -2,7 +2,6 @@ import os
 import json
 from kafka import KafkaConsumer
 
-# إعداد Kafka consumer
 bootstrap_servers = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:29092").split(",")
 topic = os.getenv("KAFKA_TOPIC", "enriched.jsonl")
 
@@ -24,4 +23,4 @@ with open(output_path, "a") as f:
         json.dump(message.value, f, ensure_ascii=False)
         f.write("\n")
         f.flush()
-        print(f"✅ Written event to file: {message.value}")
+        print(f"Written event to file: {message.value}")
