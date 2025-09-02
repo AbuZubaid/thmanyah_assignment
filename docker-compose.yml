@@ -1,0 +1,188 @@
+services:
+  # ==========================
+  # Zookeeper
+  # ==========================
+  zookeeper:
+    platform: linux/amd64
+    image: confluentinc/cp-zookeeper:7.4.0
+    container_name: zookeeper
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+
+  # ==========================
+  # Kafka (single broker)
+  # ==========================
+  kafka:
+    platform: linux/amd64
+    image: confluentinc/cp-kafka:7.4.0
+    container_name: kafka
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENERS: INTERNAL://kafka:29092,EXTERNAL://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:29092,EXTERNAL://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+
+  # ==========================
+  # PostgreSQL (Debezium source)
+  # ==========================
+  postgresql:
+    platform: linux/amd64
+    image: debezium/postgres:17-alpine
+    container_name: postgresql
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: mydb
+    ports:
+      - "5432:5432"
+    command: postgres -c wal_level=logical -c max_wal_senders=10
+    volumes:
+      - ./init-db:/docker-entrypoint-initdb.d
+
+  # ==========================
+  # Kafka Connect (Debezium)
+  # ==========================
+  kafka-connect:
+    image: debezium/connect:2.2.1.Final
+    container_name: kafka-connect
+    platform: linux/amd64
+    depends_on:
+      - kafka
+      - postgresql
+    ports:
+      - "8084:8083" # external:internal
+    environment:
+      BOOTSTRAP_SERVERS: "kafka:29092"
+      CONNECT_LISTENERS: "http://0.0.0.0:8083"
+      CONNECT_REST_ADVERTISED_HOST_NAME: kafka-connect
+      CONNECT_REST_PORT: 8083
+      CONNECT_REST_HOST_NAME: kafka-connect
+      GROUP_ID: 1
+      CONFIG_STORAGE_TOPIC: connect_configs
+      OFFSET_STORAGE_TOPIC: connect_offsets
+      STATUS_STORAGE_TOPIC: connect_statuses
+      KEY_CONVERTER: org.apache.kafka.connect.storage.StringConverter
+      KEY_CONVERTER_SCHEMAS_ENABLE: "false"
+      VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      VALUE_CONVERTER_SCHEMAS_ENABLE: "false"
+      INTERNAL_KEY_CONVERTER: org.apache.kafka.connect.storage.StringConverter
+      INTERNAL_VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      OFFSET_FLUSH_INTERVAL_MS: 10000
+    restart: unless-stopped
+
+  # ==========================
+  # Redis
+  # ==========================
+  redis:
+    platform: linux/amd64
+    image: redis:7.0-alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+
+  # ==========================
+  # ClickHouse
+  # ==========================
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8
+    container_name: clickhouse
+    ports: ["8123:8123", "9000:9000"]
+    ulimits:
+      nofile: { soft: 262144, hard: 262144 }
+    environment:
+      CLICKHOUSE_USER: app
+      CLICKHOUSE_PASSWORD: app123
+      CLICKHOUSE_DB: analytics
+    healthcheck:
+      test: ["CMD-SHELL", "clickhouse-client -u app --password app123 -q 'SELECT 1'"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    volumes:
+      - ./init-clickhouse:/docker-entrypoint-initdb.d
+      - ./clickhouse-data:/var/lib/clickhouse
+
+
+  # ==========================
+  # Kafka Streams App (Java)
+  # ==========================
+  enrichment-app:
+    build: ./streams-enrichment
+    container_name: enrichment-app
+    depends_on:
+      - kafka
+      - redis
+      - kafka-connect
+      - clickhouse
+    command: [ "sh", "-c", "./wait-for-it.sh" ]
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      APPLICATION_ID: enrichment-app-v2
+      CONTENT_TOPIC: mydb.public.content
+      EVENTS_TOPIC: mydb.public.engagement_events
+      ENRICHED_JSONL_TOPIC: enriched.jsonl
+      ENRICHED_REDIS_TOPIC: enriched.redis
+      ENRICHED_CLICKHOUSE_TOPIC: enriched.clickhouse
+      JAVA_TOOL_OPTIONS: -Xms256m -Xmx512m
+
+  # ==========================
+  # Redis Sink (Python)
+  # ==========================
+  redis-sink:
+    build: ./sinks/redis
+    container_name: redis-sink
+    depends_on:
+      - kafka
+      - redis
+    environment:
+      PYTHONUNBUFFERED: 1
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:29092"
+      KAFKA_TOPIC: enriched.redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+
+  # ==========================
+  # JSONL Sink (Python)
+  # ==========================
+  jsonl-sink:
+    build: ./sinks/jsonl
+    container_name: jsonl-sink
+    volumes:
+      - ./jsonl-data:/data
+    depends_on:
+      - kafka
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:29092"
+      KAFKA_TOPIC: enriched.jsonl
+
+  # ==========================
+  # ClickHouse Sink (Python)
+  # ==========================
+  ch-sink:
+    build:
+      context: ./sinks/clickhouse
+    container_name: ch-sink
+    depends_on:
+      - kafka
+      - clickhouse
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      KAFKA_TOPIC: enriched.clickhouse
+      KAFKA_GROUP: ch-sink
+      CH_HOST: clickhouse
+      CH_PORT: "8123"
+      CH_DB: analytics
+      CH_TABLE: enriched_events
+      CH_USER: app           # <--
+      CH_PASSWORD: app123
